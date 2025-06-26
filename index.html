@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="bn">
 <head>
@@ -245,7 +244,7 @@
 
         .search-container {
             flex: 1;
-            max-width: 400px;
+            max-width: 600px;
             margin: 0 20px;
             position: relative;
         }
@@ -263,6 +262,35 @@
 
         .search-input::placeholder {
             color: rgba(255,255,255,0.7);
+        }
+
+        .search-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 0 0 15px 15px;
+            box-shadow: var(--shadow);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+        }
+
+        .search-suggestion {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.3s ease;
+        }
+
+        .search-suggestion:hover {
+            background: var(--light-color);
+        }
+
+        .search-suggestion:last-child {
+            border-bottom: none;
         }
 
         .search-btn {
@@ -1096,8 +1124,9 @@
             <div class="header-top">
                 <div class="logo">BongShaj</div>
                 <div class="search-container">
-                    <input type="text" class="search-input" placeholder="Search...">
-                    <button class="search-btn">GO</button>
+                    <input type="text" class="search-input" placeholder="পণ্য খুঁজুন..." id="searchInput" oninput="showSearchSuggestions()" onblur="hideSearchSuggestions()">
+                    <button class="search-btn" onclick="searchProducts()">GO</button>
+                    <div class="search-suggestions" id="searchSuggestions"></div>
                 </div>
                 <div class="user-info">
                     <span id="userName">স্বাগতম</span>
@@ -1239,18 +1268,21 @@
                     <!-- UPI Details -->
                     <div id="upiDetails" class="upi-details hidden">
                         <div class="qr-code">
-                            <div class="qr-placeholder">
-                                SuperMoney QR Code
-                            </div>
+                            <img src="/lovable-uploads/a7ecdfe5-d42f-4f65-843f-6d51f8a8f3ef.png" alt="SuperMoney QR Code" style="width: 200px; height: auto; border-radius: 10px;">
                             <div class="upi-id">bosak.mr@superyes</div>
                         </div>
                         <p style="text-align: center; color: #666; font-size: 0.9rem;">
                             উপরের QR কোড স্ক্যান করুন অথবা UPI ID ব্যবহার করে পেমেন্ট করুন
                         </p>
+                        
+                        <div id="paymentVerification" class="payment-verification hidden">
+                            <div id="paymentStatus">পেমেন্ট যাচাই করা হচ্ছে...</div>
+                            <button class="verify-payment-btn" onclick="verifyPayment()">পেমেন্ট যাচাই করুন</button>
+                        </div>
                     </div>
 
-                    <button class="place-order-btn" onclick="placeOrder()" id="placeOrderBtn" disabled>
-                        অর্ডার নিশ্চিত করুন
+                    <button class="place-order-btn" onclick="initiatePayment()" id="placeOrderBtn" disabled>
+                        পেমেন্ট করুন
                     </button>
                 </div>
             </div>
@@ -1373,6 +1405,19 @@
             </div>
         </div>
 
+        <!-- Order Details Modal -->
+        <div id="orderDetailsModal" class="order-details-modal hidden">
+            <div class="order-details-content">
+                <div class="modal-header">
+                    <h3>অর্ডার বিস্তারিত</h3>
+                    <button class="close-btn" onclick="closeOrderDetails()">&times;</button>
+                </div>
+                <div id="orderDetailsContent">
+                    <!-- Order details will be loaded here -->
+                </div>
+            </div>
+        </div>
+
         <!-- Bottom Navigation -->
         <nav class="bottom-nav">
             <a href="#" class="nav-item active" onclick="showPage('home')">
@@ -1420,6 +1465,7 @@
         let orders = JSON.parse(localStorage.getItem('orders')) || [];
         let savedAddress = JSON.parse(localStorage.getItem('savedAddress')) || null;
         let selectedPaymentMethod = null;
+        let pendingPaymentOrder = null;
 
         // Sample products data
         let products = [
@@ -1609,7 +1655,7 @@
                     });
                 })
                 .catch((error) => {
-                    showError('অ্যাকাউন্ট তৈরিতে সমস্যা হয়েছে: ' + error.message);
+                    showError('অ্যাকাউন্ট তৈরি করতে সমস্যা হয়েছে: ' + error.message);
                 });
         });
 
@@ -1870,6 +1916,80 @@
             showPage('checkout');
         }
 
+        // Search Functions
+        function showSearchSuggestions() {
+            const input = document.getElementById('searchInput');
+            const suggestions = document.getElementById('searchSuggestions');
+            const query = input.value.toLowerCase().trim();
+            
+            if (query.length === 0) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            
+            const filteredProducts = products.filter(product => 
+                product.name.toLowerCase().includes(query)
+            ).slice(0, 5);
+            
+            if (filteredProducts.length > 0) {
+                suggestions.innerHTML = filteredProducts.map(product => 
+                    `<div class="search-suggestion" onclick="selectSearchSuggestion('${product.name}')">${product.name}</div>`
+                ).join('');
+                suggestions.style.display = 'block';
+            } else {
+                suggestions.style.display = 'none';
+            }
+        }
+
+        function selectSearchSuggestion(productName) {
+            document.getElementById('searchInput').value = productName;
+            document.getElementById('searchSuggestions').style.display = 'none';
+            searchProducts();
+        }
+
+        function hideSearchSuggestions() {
+            setTimeout(() => {
+                document.getElementById('searchSuggestions').style.display = 'none';
+            }, 200);
+        }
+
+        function searchProducts() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            if (query.length === 0) return;
+            
+            const filteredProducts = products.filter(product => 
+                product.name.toLowerCase().includes(query)
+            );
+            
+            showPage('products');
+            loadFilteredProducts(filteredProducts);
+        }
+
+        function loadFilteredProducts(filteredProducts) {
+            const allProductGrid = document.getElementById('allProductGrid');
+            
+            const productHTML = filteredProducts.map(product => `
+                <div class="product-card" onclick="showProductDetails(${product.id})">
+                    <div class="product-image">Image placeholder</div>
+                    <div class="product-info">
+                        <div class="product-name">${product.name}</div>
+                        <div class="product-price">
+                            <span class="current-price">৳${product.price}</span>
+                            ${product.originalPrice ? `<span class="original-price">৳${product.originalPrice}</span>` : ''}
+                            ${product.discount ? `<span class="discount">${product.discount}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            if (filteredProducts.length === 0) {
+                allProductGrid.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">কোনো পণ্য পাওয়া যায়নি</div>';
+            } else {
+                allProductGrid.innerHTML = productHTML;
+            }
+        }
+
+        // Payment Functions
         function selectPayment(method) {
             selectedPaymentMethod = method;
             
@@ -1891,10 +2011,17 @@
             }
             
             // Enable place order button
-            document.getElementById('placeOrderBtn').disabled = false;
+            const btn = document.getElementById('placeOrderBtn');
+            btn.disabled = false;
+            
+            if (method === 'cod') {
+                btn.textContent = 'অর্ডার নিশ্চিত করুন';
+            } else {
+                btn.textContent = 'পেমেন্ট করুন';
+            }
         }
 
-        function placeOrder() {
+        function initiatePayment() {
             if (!selectedPaymentMethod) {
                 alert('পেমেন্ট পদ্ধতি নির্বাচন করুন।');
                 return;
@@ -1903,29 +2030,83 @@
             const orderId = 'BNG' + Date.now();
             const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) + 50;
             
-            const order = {
+            pendingPaymentOrder = {
                 id: orderId,
                 items: [...cart],
                 totalAmount: totalAmount,
                 paymentMethod: selectedPaymentMethod,
-                status: 'Confirmed',
+                status: 'Pending Payment',
                 date: new Date().toLocaleDateString('bn-BD'),
                 address: savedAddress
             };
             
-            orders.unshift(order);
-            localStorage.setItem('orders', JSON.stringify(orders));
+            if (selectedPaymentMethod === 'cod') {
+                // COD orders are confirmed immediately
+                confirmOrder();
+            } else {
+                // For UPI/SuperMoney, show payment verification
+                showPaymentVerification();
+            }
+        }
+
+        function showPaymentVerification() {
+            const verification = document.getElementById('paymentVerification');
+            const status = document.getElementById('paymentStatus');
             
-            // Clear cart
-            cart = [];
-            localStorage.setItem('cart', JSON.stringify(cart));
+            verification.classList.remove('hidden');
+            verification.className = 'payment-verification payment-pending';
+            status.textContent = `৳${pendingPaymentOrder.totalAmount} পেমেন্ট করুন এবং যাচাই করুন`;
             
-            // Show success page
-            document.getElementById('orderIdDisplay').textContent = orderId;
-            showPage('orderSuccess');
+            // Open UPI app for payment
+            if (selectedPaymentMethod === 'upi') {
+                const upiUrl = `upi://pay?pa=bosak.mr@superyes&pn=BongShaj&am=${pendingPaymentOrder.totalAmount}&cu=INR&tn=Order-${pendingPaymentOrder.id}`;
+                window.location.href = upiUrl;
+            }
+        }
+
+        function verifyPayment() {
+            const verification = document.getElementById('paymentVerification');
+            const status = document.getElementById('paymentStatus');
             
-            // Reset payment selection
-            selectedPaymentMethod = null;
+            // Simulate payment verification (in real app, this would call backend)
+            verification.className = 'payment-verification payment-pending';
+            status.textContent = 'পেমেন্ট যাচাই করা হচ্ছে...';
+            
+            setTimeout(() => {
+                // Simulate successful payment (90% success rate)
+                const isPaymentSuccessful = Math.random() > 0.1;
+                
+                if (isPaymentSuccessful) {
+                    verification.className = 'payment-verification payment-success';
+                    status.textContent = '✅ পেমেন্ট সফল হয়েছে!';
+                    setTimeout(() => {
+                        confirmOrder();
+                    }, 2000);
+                } else {
+                    verification.className = 'payment-verification payment-failed';
+                    status.textContent = '❌ পেমেন্ট ব্যর্থ হয়েছে। আবার চেষ্টা করুন।';
+                }
+            }, 3000);
+        }
+
+        function confirmOrder() {
+            if (pendingPaymentOrder) {
+                pendingPaymentOrder.status = 'Confirmed';
+                orders.unshift(pendingPaymentOrder);
+                localStorage.setItem('orders', JSON.stringify(orders));
+                
+                // Clear cart
+                cart = [];
+                localStorage.setItem('cart', JSON.stringify(cart));
+                
+                // Show success page
+                document.getElementById('orderIdDisplay').textContent = pendingPaymentOrder.id;
+                showPage('orderSuccess');
+                
+                // Reset payment selection
+                selectedPaymentMethod = null;
+                pendingPaymentOrder = null;
+            }
         }
 
         function goToOrders() {
@@ -1947,7 +2128,7 @@
             }
             
             ordersList.innerHTML = orders.map(order => `
-                <div class="cart-item" style="margin: 20px;">
+                <div class="cart-item" style="margin: 20px; cursor: pointer;" onclick="showOrderDetails('${order.id}')">
                     <div style="flex: 1;">
                         <div style="font-weight: 600; margin-bottom: 5px;">অর্ডার #${order.id}</div>
                         <div style="color: #666; margin-bottom: 5px;">তারিখ: ${order.date}</div>
@@ -1961,8 +2142,66 @@
                             </span>
                         </div>
                     </div>
+                    <div style="color: #666;">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
                 </div>
             `).join('');
+        }
+
+        function showOrderDetails(orderId) {
+            const order = orders.find(o => o.id === orderId);
+            if (!order) return;
+            
+            const deliveryDate = new Date();
+            deliveryDate.setDate(deliveryDate.getDate() + 7);
+            
+            const modalContent = document.getElementById('orderDetailsContent');
+            modalContent.innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <h4>অর্ডার #${order.id}</h4>
+                    <p style="color: #666;">অর্ডারের তারিখ: ${order.date}</p>
+                    <p style="color: #666;">ডেলিভারি তারিখ: ${deliveryDate.toLocaleDateString('bn-BD')}</p>
+                </div>
+                
+                ${order.items.map(item => `
+                    <div class="order-item-card">
+                        <div class="order-item-header">
+                            <div class="order-item-image">Image</div>
+                            <div class="order-item-info">
+                                <div class="order-item-name">${item.name}</div>
+                                <div class="order-item-price">৳${item.price}</div>
+                            </div>
+                        </div>
+                        <div class="order-item-details">
+                            <div><strong>পরিমাণ:</strong> ${item.quantity}</div>
+                            <div><strong>মোট:</strong> ৳${item.price * item.quantity}</div>
+                            ${item.selectedSize ? `<div><strong>সাইজ:</strong> ${item.selectedSize}</div>` : ''}
+                            ${item.selectedColor ? `<div><strong>রঙ:</strong> ${item.selectedColor}</div>` : ''}
+                        </div>
+                        <div class="order-status-badge status-${order.status.toLowerCase().replace(' ', '-')}">
+                            ${order.status}
+                        </div>
+                    </div>
+                `).join('')}
+                
+                <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>পেমেন্ট পদ্ধতি:</span>
+                        <span>${order.paymentMethod === 'cod' ? 'Cash on Delivery' : order.paymentMethod === 'upi' ? 'UPI Payment' : 'SuperMoney'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; color: var(--primary-color);">
+                        <span>মোট:</span>
+                        <span>৳${order.totalAmount}</span>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('orderDetailsModal').classList.remove('hidden');
+        }
+
+        function closeOrderDetails() {
+            document.getElementById('orderDetailsModal').classList.add('hidden');
         }
 
         function showAddressPage() {
