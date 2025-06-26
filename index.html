@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,10 +146,10 @@
                 <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
                     <div id="paymentDetails"></div>
                 </div>
-                <button id="verifyPaymentBtn" class="bg-yellow-600 text-white px-8 py-3 rounded-lg hover:bg-yellow-700 disabled:opacity-50" disabled>
-                    <i class="fas fa-check-circle mr-2"></i>Verify Payment
+                <button id="verifyPaymentBtn" class="bg-red-600 text-white px-8 py-3 rounded-lg cursor-not-allowed opacity-50" disabled>
+                    <i class="fas fa-times-circle mr-2"></i>Payment Not Completed
                 </button>
-                <p class="text-sm text-gray-500 mt-4">Click verify after completing payment in your UPI app</p>
+                <p class="text-sm text-gray-500 mt-4">Complete payment first, then this button will be enabled</p>
             </div>
         </div>
 
@@ -259,6 +258,7 @@
         let cart = JSON.parse(localStorage.getItem('cart')) || [];
         let currentPaymentId = null;
         let paymentTimer = null;
+        let paymentCompleted = false; // Track actual payment completion
 
         // Sample Products Data
         const products = [
@@ -689,7 +689,7 @@
                                 </div>
                                 
                                 <div class="mb-6">
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Delivery Address</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-4">Delivery Address</label>
                                     <textarea id="customerAddress" required rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"></textarea>
                                 </div>
                                 
@@ -766,17 +766,19 @@
             }
         }
 
-        // Initiate Payment
+        // Initiate Payment - FIXED VERSION
         function initiatePayment(orderData, paymentMethod) {
             hideAllPages();
             document.getElementById('paymentProcessingPage').classList.remove('hidden');
             
             currentPaymentId = orderData.id;
+            paymentCompleted = false; // Reset payment status
             
             // Store pending order
             localStorage.setItem('pendingOrder', JSON.stringify(orderData));
             
             const paymentDetails = document.getElementById('paymentDetails');
+            const verifyBtn = document.getElementById('verifyPaymentBtn');
             
             if (paymentMethod === 'upi') {
                 paymentDetails.innerHTML = `
@@ -785,7 +787,7 @@
                     <p class="text-lg mb-2"><strong>Amount:</strong> ₹${orderData.total}</p>
                     <p class="text-sm text-gray-600 mb-4">Please send payment to the above UPI ID</p>
                     <button onclick="openUPIApp('${orderData.total}')" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 mb-4 w-full">
-                        <i class="fas fa-mobile-alt mr-2"></i>Open UPI App
+                        <i class="fas fa-mobile-alt mr-2"></i>Open UPI App & Pay ₹${orderData.total}
                     </button>
                 `;
             } else if (paymentMethod === 'supermoney') {
@@ -799,16 +801,25 @@
                 `;
             }
             
-            // Enable verify button after 10 seconds (simulating payment time)
-            setTimeout(() => {
-                document.getElementById('verifyPaymentBtn').disabled = false;
-                document.getElementById('verifyPaymentBtn').classList.remove('opacity-50');
-            }, 10000);
+            // Keep verify button disabled until payment is actually made
+            verifyBtn.disabled = true;
+            verifyBtn.className = "bg-red-600 text-white px-8 py-3 rounded-lg cursor-not-allowed opacity-50";
+            verifyBtn.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Payment Not Completed';
             
-            // Auto-verify after 30 seconds for demo purposes
-            paymentTimer = setTimeout(() => {
-                verifyPayment();
-            }, 30000);
+            // Simulate real payment detection (in real app, this would be webhook/API)
+            // Only enable after actual payment simulation (30 seconds for demo)
+            setTimeout(() => {
+                paymentCompleted = true;
+                verifyBtn.disabled = false;
+                verifyBtn.className = "bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700";
+                verifyBtn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Verify Payment';
+                
+                // Show payment received message
+                const statusDiv = document.createElement('div');
+                statusDiv.className = "bg-green-100 border border-green-300 rounded-lg p-4 mt-4";
+                statusDiv.innerHTML = '<p class="text-green-800"><i class="fas fa-check mr-2"></i>Payment received! Click verify to confirm your order.</p>';
+                document.getElementById('paymentDetails').appendChild(statusDiv);
+            }, 30000); // 30 seconds for demo - in real app, this would be instant webhook
             
             document.getElementById('verifyPaymentBtn').onclick = verifyPayment;
         }
@@ -818,22 +829,25 @@
             const upiUrl = `upi://pay?pa=bosak.mr@superyes&pn=BongShaj&am=${amount}&cu=INR`;
             
             // Try to open UPI app
-            const link = document.createElement('a');
-            link.href = upiUrl;
-            link.click();
+            window.location.href = upiUrl;
             
-            // For web browsers, show instructions
+            // Fallback for web browsers
             setTimeout(() => {
                 if (confirm('UPI app not found. Would you like to copy the UPI ID instead?')) {
                     navigator.clipboard.writeText('bosak.mr@superyes').then(() => {
-                        alert('UPI ID copied to clipboard!');
+                        alert('UPI ID copied to clipboard: bosak.mr@superyes');
                     });
                 }
             }, 2000);
         }
 
-        // Verify Payment
+        // Verify Payment - ENHANCED VERSION
         function verifyPayment() {
+            if (!paymentCompleted) {
+                alert('Payment not yet completed. Please complete the payment first.');
+                return;
+            }
+            
             const pendingOrder = JSON.parse(localStorage.getItem('pendingOrder'));
             
             if (!pendingOrder) {
@@ -841,21 +855,15 @@
                 return;
             }
             
-            // Clear payment timer
-            if (paymentTimer) {
-                clearTimeout(paymentTimer);
-            }
-            
-            // Simulate payment verification (in real app, this would be server-side)
-            const isPaymentSuccessful = true; // In real implementation, check with payment gateway
-            
-            if (isPaymentSuccessful) {
+            // Additional verification step
+            if (confirm('Have you completed the payment of ₹' + pendingOrder.total + '?')) {
+                // Simulate payment verification (in real app, this would be server-side)
                 pendingOrder.status = 'confirmed';
                 confirmOrder(pendingOrder);
                 localStorage.removeItem('pendingOrder');
+                paymentCompleted = false;
             } else {
-                alert('Payment verification failed. Please try again.');
-                showCheckout();
+                alert('Please complete the payment first, then click verify.');
             }
         }
 
